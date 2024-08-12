@@ -1,0 +1,9 @@
+update rs2_gl_data 
+SET loc_amount_value = (loc_amount_value / (power(10,b.exponent )))
+from curr_exp_ref b 
+where rs2_gl_data.loc_currency = b.curr_num;
+
+update rs2_gl_data 
+SET acct_amount_value = (acct_amount_value / (power(10,b.exponent )))
+from curr_exp_ref b 
+where rs2_gl_data.loc_currency = b.curr_num;
