@@ -20,7 +20,7 @@ MRCH-PAYMENT,554,BNZ_DOM_PROC_CTRL_NZD,CIF,Y,N,N,v:file_number,c:RS2-GL-DATA,v:r
 MRCH-PAYMENT-AUD,036,BNZ_FX_PROC_CTRL_AUD,MIDAS,N,Y,Y,v:file_number,c:RS2-GL-DATA,v:record_date,v:gl_acct_number
 MRCH-PAYMENT-EUR,978,BNZ_FX_PROC_CTRL_EUR,MIDAS,N,Y,Y,v:file_number,c:RS2-GL-DATA,v:record_date,v:gl_acct_number
 MRCH-PAYMENT-GBP,826,BNZ_FX_PROC_CTRL_GBP,MIDAS,N,Y,Y,v:file_number,c:RS2-GL-DATA,v:record_date,v:gl_acct_number
-MRCH-PAYMENT-USD,840,BNZ_FX_PROC_CTRL_USD,MIDAS,N,Y,Y,v:file_number,c:RS2-GL-DATA,v:record_date,v:gl_acct_number
+MRCH-PAYMENT-USD,840,BNZ_FX_PROC_CTRL_USD,MIDAS,N,N,Y,v:file_number,c:RS2-GL-DATA,v:record_date,v:gl_acct_number
 MRCH-SETTLE-BNZ,554,BNZ_DOM_MRCH_SETTLE_NZD,CIF,N,Y,Y,v:file_number,c:RS2-GL-DATA,v:record_date,v:gl_acct_number
 MRCH-SETTLE-BNZ-AUD,036,BNZ_FX_MRCH_SETTLE_AUD,MIDAS,N,N,N,v:file_number,c:RS2-GL-DATA,v:record_date,v:gl_acct_number
 MRCH-SETTLE-BNZ-EUR,978,BNZ_FX_MRCH_SETTLE_EUR,MIDAS,N,N,N,v:file_number,c:RS2-GL-DATA,v:record_date,v:gl_acct_number

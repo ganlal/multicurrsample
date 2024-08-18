@@ -101,6 +101,31 @@ def get_pcr_data(instr,var_dict):
         return instr[2:14]
     else:
         return var_dict[instr[2:99]]
+    
+def cre_bulk_insert_data(in_rst,group_ref):
+    bulk_ins_data = []    
+    for l in in_rst:
+       src_list = list(l)
+       #print(l)
+       tgt_list = [src_list[0],src_list[1],src_list[2],src_list[3],src_list[4],src_list[5]]
+       var_dict = {"file_number":src_list[6][4:10]+"-"+src_list[7][5:10]
+                  ,"record_date":src_list[0]
+                  ,"gl_acct_number":src_list[8][0:20]}
+       # append particular data 
+       tgt_list.append(get_pcr_data(src_list[9], var_dict))
+       # append code data  
+       tgt_list.append(get_pcr_data(src_list[10], var_dict))
+       # append reference data 
+       tgt_list.append(get_pcr_data(src_list[11], var_dict))
+       # append other name data 
+       tgt_list.append(get_pcr_data(src_list[12], var_dict))
+       # append group_ref data  
+       tgt_list.append(group_ref)
+       bulk_ins_data.append(tuple(tgt_list))
+       #print(tgt_list)
+       #vbulk_ins_data = bulk_ins_data.append(tuple(tgt_list))
+    return(bulk_ins_data)    
+    
 
 
 #step-01: read and load the configuration data into a dictionary 
@@ -237,8 +262,7 @@ try:
     cur1.close()  
 # step-08: Now insert BNZ Postings 
 
-# part-1= look for net_all postings 
- 
+# part-1= look for all net  postings 
 
     sql = """SELECT a.record_date,b.acct_system, a.acct_currency, b.bnz_acct_number
     ,CASE WHEN sum(acct_amount_value) >= 0 THEN '50' ELSE '00' END tran_code 
@@ -251,39 +275,131 @@ try:
     JOIN rs2_to_bnz_acct_map b ON a.gl_acct_number = b.rs2_gl_acct_number
     WHERE b.net_post_all_flag = 'Y' 
     GROUP BY a.record_date,a.acct_currency,  b.bnz_acct_number
-	,b.particular_config
-	,b.code_config
-	,b.reference_config
-	,b.other_acct_config
-	;  """
+	,b.particular_config, b.code_config	,b.reference_config	,b.other_acct_config;  """
     
     cur1 = conn.cursor()
     cur1.execute(sql)
     rst = cur1.fetchall()
-    
-    for l in rst:
-       src_list = list(l)
-       print(l)
-       tgt_list = [src_list[0],src_list[1],src_list[2],src_list[3],src_list[4],src_list[5]]
-       var_dict = {"file_number":src_list[6][4:10]+"-"+src_list[7][5:10]
-                  ,"record_date":src_list[0]
-                  ,"gl_acct_number":src_list[8][0:20]}
-       # append particular data 
-       tgt_list.append(get_pcr_data(src_list[9], var_dict))
-       # append code data  
-       tgt_list.append(get_pcr_data(src_list[10], var_dict))
-       # append reference data 
-       tgt_list.append(get_pcr_data(src_list[11], var_dict))
-       # append other name data 
-       tgt_list.append(get_pcr_data(src_list[12], var_dict))
-       # append group_ref data  
-       tgt_list.append("G01-Net All data ")
-       print(tgt_list)        
-       
-        
-    
+# create the insert data list with rows as tuples..     
+    group_ref = "G01-Net All data "
+    to_db = cre_bulk_insert_data(rst,group_ref)
+    isql = """INSERT INTO bnz_acct_post ( record_date,acct_system,curr_num,bnz_acct_number
+            ,tran_code,tran_amount,parti,code,reference,other_acct,group_ref)
+            VALUES (?, ?, ?, ?, ?,?, ?, ?, ?, ?,?);"""
+    #print(to_db)    
+    cur1.executemany(isql, to_db)
     cur1.close()    
-   
+
+# part-2 create CR only net posting 
+    sql = """SELECT a.record_date,b.acct_system, a.acct_currency, b.bnz_acct_number
+    ,'50' tran_code 
+    ,ROUND(SUM(acct_amount_value),2) post_amount  
+    ,MIN(a.file_number) file_no_min
+    ,MAX(a.file_number) file_no_max
+    ,MIN(a.gl_acct_number) other_acct
+	,b.particular_config ,b.code_config	,b.reference_config ,b.other_acct_config
+    FROM rs2_gl_data a  
+    JOIN rs2_to_bnz_acct_map b ON a.gl_acct_number = b.rs2_gl_acct_number
+    WHERE b.net_post_all_flag = 'N'
+    AND b.net_post_cr_flag = 'Y'
+    AND a.dr_cr = 'C'
+    GROUP BY a.record_date,a.acct_currency,  b.bnz_acct_number
+	,b.particular_config, b.code_config	,b.reference_config	,b.other_acct_config;  """
+    
+    cur1 = conn.cursor()
+    cur1.execute(sql)
+    rst = cur1.fetchall()
+# create the insert data list with rows as tuples..     
+    group_ref = "G02-CR Net Post data"
+    to_db = cre_bulk_insert_data(rst,group_ref)
+    isql = """INSERT INTO bnz_acct_post ( record_date,acct_system,curr_num,bnz_acct_number
+            ,tran_code,tran_amount,parti,code,reference,other_acct,group_ref)
+            VALUES (?, ?, ?, ?, ?,?, ?, ?, ?, ?,?);"""
+    #print(to_db)    
+    cur1.executemany(isql, to_db)
+    cur1.close()  
+
+# part-3 create DR only net posting 
+    sql = """SELECT a.record_date,b.acct_system, a.acct_currency, b.bnz_acct_number
+    ,'00' tran_code 
+    ,ROUND(SUM(acct_amount_value),2) post_amount  
+    ,MIN(a.file_number) file_no_min
+    ,MAX(a.file_number) file_no_max
+    ,MIN(a.gl_acct_number) other_acct
+	,b.particular_config ,b.code_config	,b.reference_config ,b.other_acct_config
+    FROM rs2_gl_data a  
+    JOIN rs2_to_bnz_acct_map b ON a.gl_acct_number = b.rs2_gl_acct_number
+    WHERE b.net_post_all_flag = 'N'
+    AND b.net_post_dr_flag = 'Y'
+    AND a.dr_cr = 'D'
+    GROUP BY a.record_date,a.acct_currency,  b.bnz_acct_number
+	,b.particular_config, b.code_config	,b.reference_config	,b.other_acct_config;  """
+    
+    cur1 = conn.cursor()
+    cur1.execute(sql)
+    rst = cur1.fetchall()
+# create the insert data list with rows as tuples..     
+    group_ref = "G03-DR Net Post data"
+    to_db = cre_bulk_insert_data(rst,group_ref)
+    isql = """INSERT INTO bnz_acct_post ( record_date,acct_system,curr_num,bnz_acct_number
+            ,tran_code,tran_amount,parti,code,reference,other_acct,group_ref)
+            VALUES (?, ?, ?, ?, ?,?, ?, ?, ?, ?,?);"""
+    #print(to_db)    
+    cur1.executemany(isql, to_db)
+    cur1.close()      
+
+# part-4 create cr  individual posting 
+    sql = """SELECT a.record_date,b.acct_system, a.acct_currency, b.bnz_acct_number
+    ,'50' tran_code 
+    ,ROUND(acct_amount_value,2) post_amount  
+    ,a.file_number file_no_min
+    ,a.file_number file_no_max
+    ,a.gl_acct_number other_acct
+	,b.particular_config ,b.code_config,b.reference_config ,b.other_acct_config
+    FROM rs2_gl_data a  
+    JOIN rs2_to_bnz_acct_map b ON a.gl_acct_number = b.rs2_gl_acct_number
+    WHERE b.net_post_all_flag = 'N' AND b.net_post_cr_flag = 'N' 
+    AND ROUND(acct_amount_value,2) >= 0; """
+    
+    cur1 = conn.cursor()
+    cur1.execute(sql)
+    rst = cur1.fetchall()
+# create the insert data list with rows as tuples..     
+    group_ref = "G04-Individual CR posting .. "
+    to_db = cre_bulk_insert_data(rst,group_ref)
+    isql = """INSERT INTO bnz_acct_post ( record_date,acct_system,curr_num,bnz_acct_number
+            ,tran_code,tran_amount,parti,code,reference,other_acct,group_ref)
+            VALUES (?, ?, ?, ?, ?,?, ?, ?, ?, ?,?);"""
+    #print(to_db)    
+    cur1.executemany(isql, to_db)
+    cur1.close()   
+# part-5 create dr  individual posting 
+    sql = """SELECT a.record_date,b.acct_system, a.acct_currency, b.bnz_acct_number
+    , '00' tran_code 
+    ,ROUND(acct_amount_value,2) post_amount  
+    ,a.file_number file_no_min
+    ,a.file_number file_no_max
+    ,a.gl_acct_number other_acct
+	,b.particular_config ,b.code_config,b.reference_config ,b.other_acct_config
+    FROM rs2_gl_data a  
+    JOIN rs2_to_bnz_acct_map b ON a.gl_acct_number = b.rs2_gl_acct_number
+    WHERE b.net_post_all_flag = 'N' AND b.net_post_dr_flag = 'N'
+    AND ROUND(acct_amount_value,2) < 0;"""
+    
+    cur1 = conn.cursor()
+    cur1.execute(sql)
+    rst = cur1.fetchall()
+# create the insert data list with rows as tuples..     
+    group_ref = "G05-Individual DR posting .. "
+    to_db = cre_bulk_insert_data(rst,group_ref)
+    isql = """INSERT INTO bnz_acct_post ( record_date,acct_system,curr_num,bnz_acct_number
+            ,tran_code,tran_amount,parti,code,reference,other_acct,group_ref)
+            VALUES (?, ?, ?, ?, ?,?, ?, ?, ?, ?,?);"""
+    #print(to_db)    
+    cur1.executemany(isql, to_db)
+    cur1.close() 
+
+
 # fina step - commit all the changes ..
     conn.commit()       
     print("All changes committed")
@@ -298,6 +414,3 @@ finally:
     if conn:
         conn.close()
         print("The SQLite connection is closed")
-
-
-
