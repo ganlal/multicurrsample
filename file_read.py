@@ -5,13 +5,14 @@ Created on Tue Aug  6 15:01:30 2024
 @author: ganla
 
 """
-import sqlite3
+import sqlite3,csv
 
 def create_tables():
     sql_statements = [ 
         """DROP TABLE IF EXISTS rs2_gl_data ;""",
         """DROP TABLE IF EXISTS curr_exp_ref ;""",  
-        """DROP TABLE IF EXISTS deal_control ;""",          
+        """DROP TABLE IF EXISTS deal_control ;""",      
+        """DROP TABLE IF EXISTS rs2_to_bnz_acct_map ;""",
         """CREATE TABLE IF NOT EXISTS rs2_gl_data (
                 rec_type text null,
                 record_date text null,
@@ -26,7 +27,8 @@ def create_tables():
                 loc_amount_value numeric null,
                 acct_curr_code text null,
                 acct_amount_value numeric null,
-                loc_acct_fx_rate_values real null,
+                loc_acct_fx_rate_value real null,
+                file_number text null,
                 id INTEGER PRIMARY KEY
         );""",
         """CREATE TABLE IF NOT EXISTS curr_exp_ref (
@@ -41,6 +43,21 @@ def create_tables():
                 dr_cr text null,
                 curr_amount  float null,
                 deal_info text null
+        );""" ,
+        """CREATE TABLE IF NOT EXISTS rs2_to_bnz_acct_map (
+                rs2_gl_acct_number text null,
+                curr_code text null,
+                bnz_acct_number text null,
+                acct_system text null,
+                net_post_all_flag text null,
+                net_post_cr_flag text null,
+                net_post_dr_flag text null,   
+                particular_config text null,
+                code_config text null,
+                reference_config text null,
+                other_acct_config text null,
+                id INTEGER PRIMARY KEY
+
         );""" ,        
         ]
         # create a database connection
@@ -63,11 +80,35 @@ create_tables()
 try:
     conn = sqlite3.connect(r'C:\data\mc\mc.db')
     print("Connected to SQLite")
+
+#step-01: read and load the configuration data into a dictionary 
+    with open("c:/data/mc/config.csv",newline='') as config_data:
+        reader = csv.DictReader(config_data)
+        config_dict = {}
+        for row in reader:
+            #print(row['config_tag'],row['config_value'])
+            config_dict[row['config_tag']] = row['config_value']
+
+
+#step-02: load mapping table data -  curr_exp_ref.csv 
+#use dictionary key =  curr_info_file
+    cur = conn.cursor()
+    with open(config_dict["curr_info_file"],'r') as fin: # `with` statement available in 2.5+
+        # csv.DictReader uses first line in file for column headings by default
+        dr = csv.DictReader(fin) # comma is default delimiter
+        to_db = [(i['curr_num'], i['curr_code'], i['exponent']) for i in dr]
+    
+    cur.executemany("INSERT INTO curr_exp_ref (curr_num, curr_code,exponent) VALUES (?, ?,?);"
+                    , to_db)
+    cur.close()
+    
+
+
     
 #load all the config data 
     cur1 = conn.cursor()
     isql = """INSERT INTO curr_exp_ref (curr_num,curr_code, exponent ) VALUES(?,?,?); """
-    f = open('c:\data\mc\curr_exp_ref.txt','r')
+    f = open("c:/data/mc/curr_exp_ref.txt","r")
     for l in f:
         data_tuple = (l[0:3],l[3:6],float(l[6:7]) )
         cur1.execute(isql,data_tuple)
@@ -79,7 +120,10 @@ try:
     curr_code_dict = { id: name for (id, name) in cur1.fetchall() }
     cur1.close()  
 #    print(curr_code_dict)
-# load the dictionary for curr_num, exponent
+
+
+# load the rs2_to-BNZ_account_map data 
+
     cur1 = conn.cursor()
     cur1.execute("""SELECT curr_num, exponent FROM curr_exp_ref """)
     curr_exponent_dict = { id: name for (id, name) in cur1.fetchall() }
@@ -94,11 +138,11 @@ try:
                       (rec_type,record_date, gl_acct_number, dr_cr, loc_currency
                        ,loc_amount,acct_currency, acct_amount, loc_acct_fx_rate
                        ,loc_curr_code,loc_amount_value,acct_curr_code,acct_amount_value
-                       ,loc_acct_fx_rate_values, id) 
+                       ,loc_acct_fx_rate_value, file_number) 
                       VALUES (?, ?, ?, ?, ?,?, ?, ?, ?, ?,?,?,?,?,?);"""
 
 
-    f = open('c:\data\mc\RS2GL_DATA.txt','r')
+    f = open("c:/data/mc/RS2GL_DATA.txt","r")
     for l in f:
         #print(l[0:2])
         if l[0:2] == 'BD':
@@ -118,7 +162,7 @@ try:
                           ,loc_amount_value
                           ,acct_curr_code
                           ,acct_amount_value
-                          ,float(l[76:84]),rowid )
+                          ,float(l[76:84]),l[84:94])
             cursor.execute(isql,data_tuple)
 
             rowid += 1
@@ -135,13 +179,13 @@ try:
 # now construct the SQL to add the DEAL-CONTROL-<CURR> ENTRIES
        cur1.execute(""" INSERT INTO rs2_gl_data (rec_type,record_date,gl_acct_number,dr_cr
             ,loc_currency,loc_amount,acct_currency,acct_amount,loc_acct_fx_rate
-            ,loc_curr_code,loc_amount_value,acct_curr_code,acct_amount_value,loc_acct_fx_rate_values)
-            SELECT 'BD' as REC_TYPE, record_date, 'DEAL-CONTROL-'||acct_curr_Code
+            ,loc_curr_code,loc_amount_value,acct_curr_code,acct_amount_value,loc_acct_fx_rate_value,file_number)
+            SELECT 'BD' as REC_TYPE, record_date, 'DEAL-CONTROL-'||acct_curr_Code gl_acct_number
             ,CASE WHEN -sum(acct_amount_value) >= 0 THEN 'C' ELSE 'D' END dr_cr
             ,loc_currency, '000000000000' loc_amount
             , acct_currency  ,  '000000000000' acct_amount ,'0' loc_acct_fx_rate
-            , loc_curr_code , -sum(loc_amount_value) loc_amt_value
-            , acct_curr_code, -sum(acct_amount_value) acct_amt_value, 0.00 loc_acct_fx_value 
+            , loc_curr_code , -round(sum(loc_amount_value),2) loc_amt_value
+            , acct_curr_code, -round(sum(acct_amount_value),2) acct_amt_value, 0.00 loc_acct_fx_value, '9999999999' file_number 
             FROM  rs2_gl_data 
             GROUP BY  record_date, loc_currency, acct_currency,loc_curr_code,acct_curr_code;
       """ ) 
@@ -157,9 +201,10 @@ try:
           WHERE acct_curr_code <> 'NZD' AND gl_acct_number LIKE 'DEAL-CONTROL%';
       """ ) 
        print("Created DEAL information to deal_control table")
-        
- 
-    cur1.close()  
+    cur1.close() 
+
+
+    
 
     conn.commit()        
     f.close()    
@@ -167,6 +212,8 @@ try:
 
 
 except sqlite3.Error as e:
+    conn.close()        
+    f.close() 
     print(e)
 
 finally:

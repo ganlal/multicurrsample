@@ -1,0 +1,6 @@
+"config_tag","config_value","config_desc"
+"working_dir","c:/data/mc"
+"db_name","mc1.db"
+"curr_info_file","c:/data/mc/curr_exp_ref.csv"
+"rs2_to_bnz_acct_map_file","c:/data/mc/rs2_to_bnz_acct_map.csv"
+"rs2_data_file","c:/data/mc/RS2GL_DATA.txt"
