@@ -17,7 +17,7 @@ import sqlite3,csv,os
 def create_tables(db_name):
     sql_statements = [ 
         """DROP TABLE IF EXISTS rs2_gl_data ;""",
-        """DROP TABLE IF EXISTS curr_exp_ref ;""",  
+        # """DROP TABLE IF EXISTS curr_exp_ref ;""",  
         """DROP TABLE IF EXISTS deal_control ;""",      
         """DROP TABLE IF EXISTS rs2_to_bnz_acct_map ;""",
         """DROP TABLE IF EXISTS bnz_acct_post; """,
@@ -39,11 +39,11 @@ def create_tables(db_name):
                 file_number text null,
                 id INTEGER PRIMARY KEY
         );""",
-        """CREATE TABLE IF NOT EXISTS curr_exp_ref (
-                curr_num text null,
-                curr_code text null,
-                exponent float null
-        );""" ,       
+        # """CREATE TABLE IF NOT EXISTS curr_exp_ref (
+        #         curr_num text null,
+        #         curr_code text null,
+        #         exponent float null
+        # );""" ,       
         """CREATE TABLE IF NOT EXISTS deal_control (
                 record_date text null,
                 curr_num text null,
@@ -157,21 +157,34 @@ try:
         # csv.DictReader uses first line in file for column headings by default
         dr = csv.DictReader(fin) # comma is default delimiter
         to_db = [(i['curr_num'], i['curr_code'], i['exponent']) for i in dr]
-    
-    cur.executemany("INSERT INTO curr_exp_ref (curr_num, curr_code,exponent) VALUES (?, ?,?);", to_db)
-    cur.close()
+        curr_num=[]
+        curr_code=[]
+        exponent=[]
+        for i in to_db:
+            curr_num.append(i[0])
+            curr_code.append(i[1])
+            exponent.append(float(i[2]))
+            
+        curr_code_dict = dict(zip(curr_num,curr_code)) 
+        curr_exponent_dict = dict(zip(curr_num,exponent))
 
-# load the dictionary for curr_num curr_code to curr_code
-    cur1 = conn.cursor()
-    cur1.execute("""SELECT curr_num, curr_code FROM curr_exp_ref """)
-    curr_code_dict = { id: name for (id, name) in cur1.fetchall() }
-    cur1.close()  
+        
+#     cur.executemany("INSERT INTO curr_exp_ref (curr_num, curr_code,exponent) VALUES (?, ?,?);", to_db)
+#     cur.close()
 
-# load the dictionary for curr_num curr_code to exponent
-    cur1 = conn.cursor()
-    cur1.execute("""SELECT curr_num, exponent FROM curr_exp_ref """)
-    curr_exponent_dict = { id: name for (id, name) in cur1.fetchall() }
-    cur1.close()     
+# # load the dictionary for curr_num curr_code to curr_code
+#     cur1 = conn.cursor()
+#     cur1.execute("""SELECT curr_num, curr_code FROM curr_exp_ref """)
+#     curr_code_dict = { id: name for (id, name) in cur1.fetchall() }
+#     print(curr_code_dict)
+#     cur1.close()  
+
+# # load the dictionary for curr_num curr_code to exponent
+#     cur1 = conn.cursor()
+#     cur1.execute("""SELECT curr_num, exponent FROM curr_exp_ref """)
+#     curr_exponent_dict = { id: name for (id, name) in cur1.fetchall() }
+#     print(curr_exponent_dict)
+#     cur1.close()     
 
 #Step-04: load the rs2 to bnz config mapping 
     cur = conn.cursor()
@@ -406,9 +419,10 @@ try:
     if conn:
         conn.close()
 
-except sqlite3.Error as e:
-    conn.close()        
-    print(e)
+#except sqlite3.Error as e:
+except RuntimeError as e:    
+    conn.close()
+    print("*** We had an execution error ***", e)
 
 finally:
     if conn:
